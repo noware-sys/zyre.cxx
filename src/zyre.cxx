@@ -4,8 +4,11 @@
 
 #include <boost/function_equal.hpp>
 #include <boost/bind.hpp>
+#include <boost/thread.hpp>
 
 #include <zmq/msg.cxx>
+
+#include <zpoller.h>
 
 zyre::zyre (void)
 //	: gentor ()
@@ -29,6 +32,7 @@ const bool zyre::init (void)
 	{
 		_zyre = zyre_new (nullptr);
 		//_running = true;
+		//_id = id ();
 		_reception = new boost::thread (boost::bind (boost::mem_fn (&zyre::receive), this));
 	}
 	
@@ -49,10 +53,10 @@ const bool zyre::fin (void)
 {
 	//if (!stop ())
 	//	return false;
-	stop ();
+	//stop ();
 	
 	//if (reception_is_set ())
-		reception_unset ();
+	//	reception_unset ();
 	
 	/*
 	std::cerr << "zyre::fin()::_reception::_running=false" << std::endl;
@@ -62,26 +66,78 @@ const bool zyre::fin (void)
 	std::cerr << "zyre::fin()::_reception::joined" << std::endl;
 	*/
 	
-	std::cerr << "zyre::finalize()::_reception::deletion" << std::endl;
-	if (_reception != nullptr)
-	{
-		std::cerr << "zyre::finalize()::_reception::deleting" << std::endl;
-		//_reception -> join ();
-		delete _reception;
-		std::cerr << "zyre::finalize()::_reception::deleted" << std::endl;
-		_reception = nullptr;
-	}
-	
+	/*
 	std::cerr << "zyre::finalize()::zyre_destroy()::pre" << std::endl;
 	if (_zyre != nullptr)
 	{
 		std::cerr << "zyre::finalize()::zyre_destroy()::destroying" << std::endl;
+		//stop ();
+		//zyre_stop (_zyre);
+		zyre_destroy (&_zyre);
+		std::cerr << "zyre::finalize()::zyre_destroy()::destroyed" << std::endl;
+		_zyre = nullptr;
+		//_id = "";
+	}
+	*/
+	
+	std::cerr << "zyre::finalize()::_reception::deletion" << std::endl;
+	if (_reception != nullptr)
+	{
+		std::cerr << "zyre::finalize()::_reception->interrupting()ing" << std::endl;
+		_reception -> interrupt ();
+		std::cerr << "zyre::finalize()::_reception->interrupting()ed" << std::endl;
+		
+		//std::cerr << "zyre::finalize()::_reception->loccast()ing" << std::endl;
+		//assert (loccast (zmq::msg ("shutdown.dummy")));
+		//std::cerr << "zyre::finalize()::_reception->loccast()ed" << std::endl;
+		
+		
+		std::cerr << "zyre::finalize()::zyre_stop()ping" << std::endl;
+		//stop ();
+		zyre_stop (_zyre);
+		std::cerr << "zyre::finalize()::zyre_stop()ped" << std::endl;
+		
+		std::cerr << "zyre::finalize()::zyre_destroy()ing" << std::endl;
+		zyre_destroy (&_zyre);
+		std::cerr << "zyre::finalize()::zyre_destroy()ed" << std::endl;
+		_zyre = nullptr;
+		
+		
+		reception_unset ();
+		
+		//try
+		//{
+			std::cerr << "zyre::finalize()::_reception->join()ing" << std::endl;
+			_reception -> join ();
+			std::cerr << "zyre::finalize()::_reception->join()ed" << std::endl;
+		/*}
+		catch (...)
+		{
+			std::cerr << "zyre::finalize()::_reception->join()ing::caught an exception" << std::endl;
+		}*/
+		
+		std::cerr << "zyre::finalize()::_reception::delete-ing" << std::endl;
+		delete _reception;
+		std::cerr << "zyre::finalize()::_reception::delete-ed" << std::endl;
+		_reception = nullptr;
+		
+		//_id = "";
+	}
+	
+	//zclock_sleep (300);
+	//_id = "";
+	/*
+	std::cerr << "zyre::finalize()::zyre_destroy()::pre" << std::endl;
+	if (_zyre != nullptr)
+	{
+		std::cerr << "zyre::finalize()::zyre_destroy()::destroying" << std::endl;
+		stop ();
 		//zyre_stop (_zyre);
 		zyre_destroy (&_zyre);
 		std::cerr << "zyre::finalize()::zyre_destroy()::destroyed" << std::endl;
 		_zyre = nullptr;
 	}
-	
+	*/
 	
 	//stop ();
 	
@@ -96,6 +152,7 @@ const bool zyre::running (void) const
 	
 	std::cerr << "zyre::running()::_running==[" << _running << "]" << std::endl;
 	return _running;
+	//return true;
 }
 
 const bool zyre::stop (void)
@@ -278,6 +335,11 @@ const std::map <const unsigned int, const std::string> zyre::peers (const std::s
 	
 	zlist_destroy (&peers_list);
 	return peers;
+}
+
+const bool zyre::loccast (const zmq::msg & msg) const
+{
+	return unicast (msg, id ());
 }
 
 const bool zyre::unicast (const zmq::msg & msg, const std::string & peer/* peer id*/) const
@@ -602,15 +664,76 @@ void zyre::receive (void)
 {
 	zyre_event_t * event;
 	
-	do
+	/*zmq::pollitem_t pollers [] =
 	{
-		std::cerr << "zyre::receive()::waiting for an event" << std::endl;
-		event = zyre_event_new (_zyre);
-		std::cerr << "zyre::receive()::received an event" << std::endl;
+		{receiver, 0, ZMQ_POLLIN, 0}
+	};*/
+	zpoller_t * poller;
+	//zsock_t * socket;
+	
+	event = nullptr;
+	poller = zpoller_new (nullptr);
+	
+	assert (poller != nullptr);
+	assert (zpoller_add (poller, zyre_socket (_zyre)) == 0);
+	
+	//while (!boost::this_thread::interruption_requested () && poller != nullptr && !zpoller_terminated (poller))
+	while (true)
+	{
+		//try
+		//{
+			std::cerr << "zyre::receive()::waiting for an event" << std::endl;
+			//if (poller != nullptr)
+			//{
+				/*socket = (zsock_t *) */zpoller_wait (poller, -1);
+				
+				if (!zpoller_terminated (poller)/* && !boost::this_thread::interruption_requested ()*/)
+				{
+					event = zyre_event_new (_zyre);
+					std::cerr << "zyre::receive()::received an event" << std::endl;
+				}
+				else
+				{
+					zpoller_destroy (&poller);
+					poller = nullptr;
+					std::cerr << "zyre::receive()::process was interrupted" << std::endl;
+					break;
+				}
+			//}
+		/*}
+		catch (...)
+		{
+			std::cerr << "zyre::receive()::interrupted" << std::endl;
+		}*/
 		
 		 // Interrupted.
 		//if (event == nullptr)
 		//	break;
+		
+		/*
+		if (event != nullptr)
+		{
+			std::cerr << "zyre::receive()ed an event::event_type==[" << zyre_event_type (event) << "]" << std::endl;
+			//std::cerr << "zyre::receive()ed an event::uuid::local	==[" << id () << "]" << std::endl;
+			std::cerr << "zyre::receive()ed an event::uuid::remote==[" << zyre_event_peer_uuid (event) << "]" << std::endl;
+			//std::cerr << "zyre::receive()ed an event::ip addr==[" << zyre_event_peer_addr (event) << "]" << std::endl;
+			std::cerr << "zyre::receive()ed an event::debug==[" << std::endl;
+			zyre_event_print (event);
+			std::cerr << "]==zyre::receive()ed an event::debug" << std::endl;
+			
+			if (zyre_event_peer_uuid (event) == _id && zyre_event_type (event) == "STOP")
+			{
+				zyre_event_destroy (&event);
+				//zpoller_destroy (&poller);
+				
+				event = nullptr;
+				//poller = nullptr;
+				_id = "";
+				
+				break;
+			}
+		}
+		*/
 		
 		//if (!_exoreception.empty () && event != nullptr)
 		if (event != nullptr && reception_is_set ())
@@ -654,12 +777,29 @@ void zyre::receive (void)
 		*/
 		
 		//if (event != nullptr)
+		//{
 			zyre_event_destroy (&event);
+			event = nullptr;
+		//}	
+		
+		try
+		{
+			boost::this_thread::interruption_point ();
+		}
+		catch (const boost::thread_interrupted &/* interruption*/)
+		{
+			zpoller_destroy (&poller);
+			poller = nullptr;
+			break;
+		}
 	}
-	while (true);
+	//while (true);
 	//while (event != nullptr);
 	//while (inited ());
 	//while (running ());
 	//while (_running && inited ());
 	//while (_running);
+	
+	//zpoller_destroy (&poller);
+	//poller = nullptr;
 }

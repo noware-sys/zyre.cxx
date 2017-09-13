@@ -32,6 +32,8 @@ class zyre
 		virtual const bool init (void);
 		
 		virtual const bool stop (void);
+		// running
+		// active activated acting
 		virtual const bool running (void) const;
 		virtual const bool start (void);
 		
@@ -50,6 +52,9 @@ class zyre
 		virtual const std::map <const unsigned int, const std::string> peers (void) const;
 		// Peers belonging to a group.
 		virtual const std::map <const unsigned int, const std::string> peers (const std::string & group) const;
+		
+		// Transmit a message to own self.
+		virtual const bool loccast (const zmq::msg &/* multipart message*/) const;
 		
 		// Transmit a message to one peer.
 		virtual const bool unicast (const zmq::msg &/* multipart message*/, const std::string &/* peer id*/) const;
@@ -109,6 +114,8 @@ class zyre
 		
 		// Manager of incoming messages.
 		virtual void receive (void);
+		
+		//std::string _id;
 		
 		// Randomness
 		//boost::random::random_device randev;
