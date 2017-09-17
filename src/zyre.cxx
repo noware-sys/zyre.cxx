@@ -2,6 +2,9 @@
 
 #include "zyre.hxx"
 
+#include <cerrno>
+#include <signal.h>
+
 #include <boost/function_equal.hpp>
 #include <boost/bind.hpp>
 #include <boost/thread.hpp>
@@ -26,15 +29,48 @@ zyre::~zyre (void)
 	//zclock_sleep (300);
 }
 
+void zyre::s_signal_handler (int/* signal_value*/)
+{
+	int rc;
+	
+	rc = write (s_fd, "S_STOP", sizeof ("S_STOP"));
+	
+	if (rc != sizeof ("S_STOP"))
+	{
+		write (STDOUT_FILENO, "Error while writing to self-pipe", sizeof ("Error while writing to self-pipe") - 1);
+		
+		//exit EXIT_FAILURE;
+	}
+}
+
+void zyre::s_catch_signal (int fd)
+{
+	s_fd = fd;
+	
+	struct sigaction action;
+	action.sa_handler = (void *) &(zyre::s_signal_handler);
+	
+	// It doesn't matter if SA_RESTART is set, because the self-pipe will wake up zmq_poll,
+	// but setting to 0 will allow zmq_read to be interrupted.
+	action.sa_flags = 0;
+	sigemptyset (&action.sa_mask);
+	sigaction (SIGINT, &action, nullptr);
+	sigaction (SIGTERM, &action, nullptr);
+}
+
 const bool zyre::init (void)
 {
-	if (!inited ())
-	{
-		_zyre = zyre_new (nullptr);
+	//if (!inited ())
+	//{
+		if (_zyre == nullptr)
+			_zyre = zyre_new (nullptr);
+		
 		//_running = true;
 		//_id = id ();
-		_reception = new boost::thread (boost::bind (boost::mem_fn (&zyre::receive), this));
-	}
+		
+		if (_reception == nullptr)
+			_reception = new boost::thread (boost::bind (boost::mem_fn (&zyre::receive), this));
+	//}
 	
 	//return true;
 	return inited ();
@@ -44,8 +80,8 @@ const bool zyre::inited (void) const
 {
 	//std::cerr << std::endl << "_zyre==[" << _zyre << ']' << std::endl;
 	//return _zyre != nullptr;
-	std::cerr << "zyre::inited()::_zyre == nullptr==[" << (_zyre == nullptr) << "]" << std::endl;
-	std::cerr << "zyre::inited()::_reception == nullptr==[" << (_reception == nullptr) << "]" << std::endl;
+	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::inited()::_zyre == nullptr==[" << (_zyre == nullptr) << "]" << std::endl;
+	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::inited()::_reception == nullptr==[" << (_reception == nullptr) << "]" << std::endl;
 	return _zyre != nullptr && _reception != nullptr;
 }
 
@@ -80,26 +116,34 @@ const bool zyre::fin (void)
 	}
 	*/
 	
-	std::cerr << "zyre::finalize()::_reception::deletion" << std::endl;
+	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::_reception::deletion" << std::endl;
 	if (_reception != nullptr)
 	{
-		std::cerr << "zyre::finalize()::_reception->interrupting()ing" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::_reception->interrupting()ing" << std::endl;
 		_reception -> interrupt ();
-		std::cerr << "zyre::finalize()::_reception->interrupting()ed" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::_reception->interrupting()ed" << std::endl;
 		
 		//std::cerr << "zyre::finalize()::_reception->loccast()ing" << std::endl;
 		//assert (loccast (zmq::msg ("shutdown.dummy")));
 		//std::cerr << "zyre::finalize()::_reception->loccast()ed" << std::endl;
 		
-		
-		std::cerr << "zyre::finalize()::zyre_stop()ping" << std::endl;
+		/*
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::zyre_stop()ping" << std::endl;
 		//stop ();
 		zyre_stop (_zyre);
-		std::cerr << "zyre::finalize()::zyre_stop()ped" << std::endl;
+		_running = false;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::zyre_stop()ped" << std::endl;
+		*/
 		
-		std::cerr << "zyre::finalize()::zyre_destroy()ing" << std::endl;
+		//zsock_t * zyre_socket_ = zyre_socket (_zyre);
+		//zsock_destroy (&zyre_socket_);
+		//zpoller_destroy (&poller);
+		
+		s_signal_handler (1);
+		
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::zyre_destroy()ing" << std::endl;
 		zyre_destroy (&_zyre);
-		std::cerr << "zyre::finalize()::zyre_destroy()ed" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::zyre_destroy()ed" << std::endl;
 		_zyre = nullptr;
 		
 		
@@ -107,18 +151,18 @@ const bool zyre::fin (void)
 		
 		//try
 		//{
-			std::cerr << "zyre::finalize()::_reception->join()ing" << std::endl;
+			std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::_reception->join()ing" << std::endl;
 			_reception -> join ();
-			std::cerr << "zyre::finalize()::_reception->join()ed" << std::endl;
+			std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::_reception->join()ed" << std::endl;
 		/*}
 		catch (...)
 		{
 			std::cerr << "zyre::finalize()::_reception->join()ing::caught an exception" << std::endl;
 		}*/
 		
-		std::cerr << "zyre::finalize()::_reception::delete-ing" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::_reception::delete-ing" << std::endl;
 		delete _reception;
-		std::cerr << "zyre::finalize()::_reception::delete-ed" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::_reception::delete-ed" << std::endl;
 		_reception = nullptr;
 		
 		//_id = "";
@@ -184,6 +228,7 @@ const bool zyre::start (void)
 		zyre_start (_zyre);
 		
 		//std::cerr << "Started Zyre Node" << std::endl;
+		//_id = id ();
 		_running = true;
 	}
 	
@@ -668,37 +713,116 @@ void zyre::receive (void)
 	{
 		{receiver, 0, ZMQ_POLLIN, 0}
 	};*/
+	//zmq_pollitem_t pollers [1];
 	zpoller_t * poller;
-	//zsock_t * socket;
+	void * socket;
+	int pipefds [2];
+	
+	//// A return code.
+	//int rc;
+	
+	
+	////pollers [0].socket = zyre_socket (_zyre)/* -> handle*/;
+	//pollers [0].socket = zsock_resolve (zyre_socket (_zyre));
+	//pollers [0].events = ZMQ_POLLIN;
 	
 	event = nullptr;
+	// Make the self-pipe.
+	assert (pipe (pipefds) == 0);
 	poller = zpoller_new (nullptr);
 	
 	assert (poller != nullptr);
 	assert (zpoller_add (poller, zyre_socket (_zyre)) == 0);
+	assert (zpoller_add (poller, (void *) &(pipefds [0])) == 0);
+	
+	s_catch_signal (pipefds [1]);
 	
 	//while (!boost::this_thread::interruption_requested () && poller != nullptr && !zpoller_terminated (poller))
 	while (true)
 	{
 		//try
 		//{
-			std::cerr << "zyre::receive()::waiting for an event" << std::endl;
+			std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::waiting for an event" << std::endl;
 			//if (poller != nullptr)
 			//{
-				/*socket = (zsock_t *) */zpoller_wait (poller, -1);
+				//try
+				//{
+					socket = zpoller_wait (poller, -1);
+				//	rc = zmq_poll (pollers, 1, -1);
+				/*}
+				catch (...)
+				{
+					std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::caught an exception" << std::endl;
+				}*/
 				
-				if (!zpoller_terminated (poller)/* && !boost::this_thread::interruption_requested ()*/)
+				/*
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::socket == pipefds [0]::[" << (socket == pipefds [0]) << "]" << std::endl;
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::socket == &(pipefds [0])::[" << (socket == &(pipefds [0])) << "]" << std::endl;
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::socket == zyre_socket(_zyre)::[" << (socket == zyre_socket (_zyre)) << "]" << std::endl;
+				*/
+				
+				if (socket == &(pipefds [0]))
 				{
-					event = zyre_event_new (_zyre);
-					std::cerr << "zyre::receive()::received an event" << std::endl;
-				}
-				else
-				{
+					std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::socket == &(pipefds [0])" << std::endl;
+					
+					char buffer [6];
+					
+					// clear notifying bytes
+					read (pipefds [0], buffer, 6);
+					
 					zpoller_destroy (&poller);
 					poller = nullptr;
-					std::cerr << "zyre::receive()::process was interrupted" << std::endl;
+					
 					break;
 				}
+				
+				//if (!zpoller_terminated (poller)/* && !boost::this_thread::interruption_requested ()*/)
+				//try
+				//if (rc > 0)
+				//{
+					event = zyre_event_new (_zyre);
+					std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::received an event" << std::endl;
+				//}
+				//if (event == nullptr)
+				/*else// if (rc < 0)
+				//catch (...)
+				{
+					//zyre_event_destroy (&event);
+					//event = nullptr;
+					
+					zpoller_destroy (&poller);
+					poller = nullptr;
+				*/	/*
+					std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::process was interrupted::" << errno << "::(" << std::strerror (errno) << ")" << std::endl;
+					
+					switch (errno)
+					{
+						// At least one of the members of the items array
+						// refers to a socket whose associated ØMQ context was terminated.
+						case ETERM:
+							std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::process was interrupted::ETERM" << std::endl;
+							break;
+						
+						// The provided items was not valid (NULL).
+						case EFAULT:
+							std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::process was interrupted::EFAULT" << std::endl;
+							break;
+						
+						// The operation was interrupted by delivery of a signal
+						// before any events were available.
+						case EINTR:
+							std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::process was interrupted::EINTR" << std::endl;
+					}
+					*/
+				/*	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::process was interrupted" << std::endl;
+					
+					break;
+				}*/
+				// Do not reiterate without trying to reach the boost interruption point that follows.
+				/*else
+				{
+					continue;
+				}*/
 			//}
 		/*}
 		catch (...)
@@ -735,59 +859,62 @@ void zyre::receive (void)
 		}
 		*/
 		
-		//if (!_exoreception.empty () && event != nullptr)
-		if (event != nullptr && reception_is_set ())
+		if (event != nullptr)
 		{
-			std::cerr << "zyre::receive()::delegating the event to the external handler" << std::endl;
+			//if (!_exoreception.empty () && event != nullptr)
+			if (reception_is_set ()/* && zyre_event_peer_uuid (event) != _id*/)
+			{
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::delegating the event to the external handler" << std::endl;
+				
+				// Delegate to the external handler.
+				_exoreception (event);
+			}
+			else
+			{
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::not delegating the event to the external handler::" << std::endl;
+				
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::not delegating the event to the external handler::(_exoreception.empty())==" << (_exoreception.empty () ? "True" : "False") << std::endl;
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::not delegating the event to the external handler::(event==nullptr)==" << (event == nullptr ? "True" : "False") << std::endl;
+			}
 			
-			// Delegate to the external handler.
-			_exoreception (event);
-		}
-		else
-		{
-			std::cerr << "zyre::receive()::not delegating the event to the external handler::" << std::endl;
+			//if (verbose)
+			//		zyre_event_print (event);
 			
-			std::cerr << "zyre::receive()::not delegating the event to the external handler::(_exoreception.empty())==" << (_exoreception.empty () ? "True" : "False") << std::endl;
-			std::cerr << "zyre::receive()::not delegating the event to the external handler::(event==nullptr)==" << (event == nullptr ? "True" : "False") << std::endl;
-		}
-		
-		//if (verbose)
-		//		zyre_event_print (event);
-		
-		/*
-		if (streq (zyre_event_type (event), "ENTER")) {
-				//  If new peer, say hello to it and wait for it to answer us
-				zsys_info ("[%s] peer entered", zyre_event_peer_name (event));
-				zyre_whispers (zyre, zyre_event_peer_uuid (event), "Hello");
-		}
-		else
-		if (streq (zyre_event_type (event), "EXIT")) {
-				zsys_info ("[%s] peer exited", zyre_event_peer_name (event));
-		}
-		else
-		if (streq (zyre_event_type (event), "WHISPER")) {
-				zsys_info ("[%s] received ping (WHISPER)", zyre_event_peer_name (event));
-				zyre_shouts (zyre, "GLOBAL", "Hello");
-		}
-		else
-		if (streq (zyre_event_type (event), "SHOUT")) {
-				zsys_info ("[%s](%s) received ping (SHOUT)",
-				           zyre_event_peer_name (event), zyre_event_group (event));
-		}
-		*/
-		
-		//if (event != nullptr)
-		//{
+			/*
+			if (streq (zyre_event_type (event), "ENTER")) {
+					//  If new peer, say hello to it and wait for it to answer us
+					zsys_info ("[%s] peer entered", zyre_event_peer_name (event));
+					zyre_whispers (zyre, zyre_event_peer_uuid (event), "Hello");
+			}
+			else
+			if (streq (zyre_event_type (event), "EXIT")) {
+					zsys_info ("[%s] peer exited", zyre_event_peer_name (event));
+			}
+			else
+			if (streq (zyre_event_type (event), "WHISPER")) {
+					zsys_info ("[%s] received ping (WHISPER)", zyre_event_peer_name (event));
+					zyre_shouts (zyre, "GLOBAL", "Hello");
+			}
+			else
+			if (streq (zyre_event_type (event), "SHOUT")) {
+					zsys_info ("[%s](%s) received ping (SHOUT)",
+					           zyre_event_peer_name (event), zyre_event_group (event));
+			}
+			*/
+			
 			zyre_event_destroy (&event);
 			event = nullptr;
-		//}	
+		}
 		
 		try
 		{
 			boost::this_thread::interruption_point ();
 		}
+		//catch (...)
 		catch (const boost::thread_interrupted &/* interruption*/)
 		{
+			std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::caught boost::thread_interrupted" << std::endl;
+			
 			zpoller_destroy (&poller);
 			poller = nullptr;
 			break;

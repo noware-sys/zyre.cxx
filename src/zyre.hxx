@@ -103,6 +103,8 @@ class zyre
 		);
 	protected:
 		zyre_t * _zyre;
+		//zpoller_t * poller;
+		int s_fd;
 		
 		bool _running;
 		
@@ -114,6 +116,9 @@ class zyre
 		
 		// Manager of incoming messages.
 		virtual void receive (void);
+		
+		void s_signal_handler (int/* signal_value*/);
+		void s_catch_signal (int/* fd*/);
 		
 		//std::string _id;
 		
