@@ -24,8 +24,10 @@ zyre::zyre (void)
 
 zyre::~zyre (void)
 {
+	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::~zyre()::in scope::pre" << std::endl;
 	//stop ();
 	fin ();
+	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::~zyre()::in scope::post" << std::endl;
 	//zclock_sleep (300);
 }
 
@@ -89,10 +91,11 @@ const bool zyre::fin (void)
 {
 	//if (!stop ())
 	//	return false;
-	//stop ();
+	stop ();
 	
 	//if (reception_is_set ())
 	//	reception_unset ();
+	
 	
 	/*
 	std::cerr << "zyre::fin()::_reception::_running=false" << std::endl;
@@ -108,10 +111,11 @@ const bool zyre::fin (void)
 	{
 		std::cerr << "zyre::finalize()::zyre_destroy()::destroying" << std::endl;
 		//stop ();
-		//zyre_stop (_zyre);
+		zyre_stop (_zyre);
 		zyre_destroy (&_zyre);
 		std::cerr << "zyre::finalize()::zyre_destroy()::destroyed" << std::endl;
 		_zyre = nullptr;
+		_running = false;
 		//_id = "";
 	}
 	*/
@@ -140,14 +144,14 @@ const bool zyre::fin (void)
 		//zpoller_destroy (&poller);
 		
 		s_signal_handler (1);
-		
+		/*
 		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::zyre_destroy()ing" << std::endl;
 		zyre_destroy (&_zyre);
 		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::finalize()::zyre_destroy()ed" << std::endl;
 		_zyre = nullptr;
+		*/
 		
-		
-		reception_unset ();
+		//reception_unset ();
 		
 		//try
 		//{
@@ -170,20 +174,23 @@ const bool zyre::fin (void)
 	
 	//zclock_sleep (300);
 	//_id = "";
-	/*
+	//reception_unset ();
+	
 	std::cerr << "zyre::finalize()::zyre_destroy()::pre" << std::endl;
 	if (_zyre != nullptr)
 	{
 		std::cerr << "zyre::finalize()::zyre_destroy()::destroying" << std::endl;
-		stop ();
+		//stop ();
 		//zyre_stop (_zyre);
 		zyre_destroy (&_zyre);
 		std::cerr << "zyre::finalize()::zyre_destroy()::destroyed" << std::endl;
 		_zyre = nullptr;
+		//_running = false;
 	}
-	*/
+	
 	
 	//stop ();
+	reception_unset ();
 	
 	return _zyre == nullptr && _reception == nullptr;
 }
@@ -226,6 +233,9 @@ const bool zyre::start (void)
 	if (!_running)
 	{
 		zyre_start (_zyre);
+		
+		//zyre_set_interface (_zyre, "enp2s0");
+		zyre_set_verbose (_zyre);
 		
 		//std::cerr << "Started Zyre Node" << std::endl;
 		//_id = id ();
@@ -348,8 +358,10 @@ const std::map <const unsigned int, const std::string> zyre::peers (void) const
 	
 	for (peer = zlist_first (peers_list), ndx = 1; peer != nullptr; peer = zlist_next (peers_list), ++ndx)
 	{
+		std::cerr << " zyre::peers(void)::index::[" << ndx << "]" << std::endl;
 		peers [ndx] = static_cast <const char *> (peer);
 		//peers.insert_or_assign (ndx, std::string (static_cast <const char *> (peer)));
+		std::cerr << " zyre::peers(void)::peers[index]::[" << peers [ndx] << "]" << std::endl;
 	}
 	
 	zlist_destroy (&peers_list);
@@ -374,8 +386,10 @@ const std::map <const unsigned int, const std::string> zyre::peers (const std::s
 	
 	for (peer = zlist_first (peers_list), ndx = 1; peer != nullptr; peer = zlist_next (peers_list), ++ndx)
 	{
+		std::cerr << " zyre::peers(group=[" << group << "])::index::[" << ndx << "]" << std::endl;
 		peers [ndx] = static_cast <const char *> (peer);
 		//peers.insert_or_assign (ndx, std::string (static_cast <const char *> (peer)));
+		std::cerr << " zyre::peers(group=[" << group << "])::peers[index]::[" << peers [ndx] << "]" << std::endl;
 	}
 	
 	zlist_destroy (&peers_list);
@@ -390,7 +404,7 @@ const bool zyre::loccast (const zmq::msg & msg) const
 const bool zyre::unicast (const zmq::msg & msg, const std::string & peer/* peer id*/) const
 //const bool zyre::unicast (const zmsg_t * zmsg, const std::string & peer/* peer id*/) const
 {
-	assert (running ());
+	//assert (running ());
 	if (/*!inited () || */!running ())
 		return false;
 	
@@ -417,9 +431,13 @@ const std::string zyre::any (void) const
 	//std::map <const unsigned int, const std::string> peers_list;
 	//noware::nr peers_list_size;
 	unsigned int peers_list_size;
+	unsigned int index;	// Optional
+	std::string peer;	// Optional
 	
 	peers_list = peers ();
 	peers_list_size = peers_list.size ();
+	
+	std::cerr << " zyre::any(void)::peers_list_size::[" << peers_list_size << "]" << std::endl;
 	
 	if (/*(unsigned int) */peers_list_size < 1)
 		return "";
@@ -427,7 +445,12 @@ const std::string zyre::any (void) const
 	boost::random::random_device randev;
 	boost::random::uniform_int_distribution <unsigned int> distr (1, peers_list_size);
 	
-	return peers_list [distr (randev)];
+	//return peers_list [distr (randev)];
+	index = distr (randev);
+	std::cerr << " zyre::any(void)::peers_list[index]::[" << index << "]" << std::endl;
+	peer = peers_list [index];
+	std::cerr << " zyre::any(void)::peer::[" << peer << "]" << std::endl;
+	return peer;
 }
 
 const std::string zyre::any (const std::string & group) const
@@ -436,9 +459,13 @@ const std::string zyre::any (const std::string & group) const
 	//std::map <const unsigned int, const std::string> peers_list;
 	//noware::nr peers_list_size;
 	unsigned int peers_list_size;
+	unsigned int index;	// Optional
+	std::string peer;	// Optional
 	
 	peers_list = peers (group);
 	peers_list_size = peers_list.size ();
+	
+	std::cerr << " zyre::any(group=[" << group << "])::peers_list_size::[" << peers_list_size << "]" << std::endl;
 	
 	if (/*(unsigned int) */peers_list_size < 1)
 		return "";
@@ -446,7 +473,12 @@ const std::string zyre::any (const std::string & group) const
 	boost::random::random_device randev;
 	boost::random::uniform_int_distribution <unsigned int> distr (1, peers_list_size);
 	
-	return peers_list [distr (randev)];
+	//return peers_list [distr (randev)];
+	index = distr (randev);
+	std::cerr << " zyre::any(group=[" << group << "])::peers_list[index]::[" << index << "]" << std::endl;
+	peer = peers_list [index];
+	std::cerr << " zyre::any(group=[" << group << "])::peer::[" << peer << "]" << std::endl;
+	return peer;
 }
 
 const bool zyre::anycast (const zmq::msg & msg, std::string & peer_id) const
@@ -652,15 +684,15 @@ const unsigned int zyre::peers_size (const std::string & group) const
 const bool zyre::reception_is_set (void) const
 {
 	//return _exoreception != nullptr;
-	return !_exoreception.empty ();
+	return !(_exoreception.empty ());
 	//return !_exoreception.empty () && _reception != nullptr;
 }
 
 const bool zyre::reception_unset (void)
 {
 	std::cerr << "zyre::reception_unset()::called" << std::endl;
-	if (reception_is_set ())
-	{
+	//if (reception_is_set ())
+	//{
 		//std::cerr << "zyre::reception_unset()::_reception::deleting" << std::endl;
 		//delete _reception;
 		//std::cerr << "zyre::reception_unset()::_reception::deleted" << std::endl;
@@ -669,7 +701,7 @@ const bool zyre::reception_unset (void)
 		//delete _exoreception;
 		std::cerr << "zyre::reception_unset()::_exoreception.clear()" << std::endl;
 		_exoreception.clear ();
-	}
+	//}
 	
 	return true;
 	//return !reception_is_set ();
@@ -755,6 +787,7 @@ void zyre::receive (void)
 					std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::caught an exception" << std::endl;
 				}*/
 				
+				//std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::zpoller_terminated()::[" << (zpoller_terminated (poller)) << "]" << std::endl;
 				/*
 				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::socket == pipefds [0]::[" << (socket == pipefds [0]) << "]" << std::endl;
 				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::socket == &(pipefds [0])::[" << (socket == &(pipefds [0])) << "]" << std::endl;
@@ -775,7 +808,15 @@ void zyre::receive (void)
 					
 					break;
 				}
-				
+				else if (zpoller_terminated (poller))
+				{
+					std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::zpoller_wait()::zpoller_terminated()" << std::endl;
+					
+					zpoller_destroy (&poller);
+					poller = nullptr;
+					
+					break;
+				}
 				//if (!zpoller_terminated (poller)/* && !boost::this_thread::interruption_requested ()*/)
 				//try
 				//if (rc > 0)
@@ -859,9 +900,14 @@ void zyre::receive (void)
 		}
 		*/
 		
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::(event==nullptr)[" << (event == nullptr ? "true" : "false") << "]" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::(_exoreception.empty())[" << (_exoreception.empty () ? "true" : "false") << "]" << std::endl;
+		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::(reception_is_set())[" << (reception_is_set () ? "true" : "false") << "]" << std::endl;
+		
 		if (event != nullptr)
 		{
-			//if (!_exoreception.empty () && event != nullptr)
+			//if (!_exoreception.empty ()/* && event != nullptr*/)
 			if (reception_is_set ()/* && zyre_event_peer_uuid (event) != _id*/)
 			{
 				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::delegating the event to the external handler" << std::endl;
@@ -871,10 +917,7 @@ void zyre::receive (void)
 			}
 			else
 			{
-				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::not delegating the event to the external handler::" << std::endl;
-				
-				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::not delegating the event to the external handler::(_exoreception.empty())==" << (_exoreception.empty () ? "True" : "False") << std::endl;
-				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::not delegating the event to the external handler::(event==nullptr)==" << (event == nullptr ? "True" : "False") << std::endl;
+				std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::receive()::not delegating the event to the external handler" << std::endl;
 			}
 			
 			//if (verbose)
