@@ -2,6 +2,9 @@
 
 #include "zyre.hxx"
 
+#include <string>
+#include <map>
+
 #include <cerrno>
 #include <signal.h>
 
@@ -20,6 +23,7 @@ zyre::zyre (void)
 	_zyre = nullptr;
 	_rx = nullptr;
 	//_exoreception = nullptr;
+	sync = true;
 }
 
 zyre::~zyre (void)
@@ -747,6 +751,7 @@ const bool zyre::rx_set (const boost::function <void (zyre_event_t * const/* zyr
 void zyre::rx (void)
 {
 	zyre_event_t * event;
+	//std::map <boost::thread::id, boost::thread> call_async;
 	
 	/*zmq::pollitem_t pollers [] =
 	{
@@ -922,11 +927,33 @@ void zyre::rx (void)
 				// Delegate to the external handler.
 				
 				//_exorx (event);
-				
+		if (sync)
+		{
+			_exorx_call (event);
+		}
+		else
+		// async
+		{
 				// This might be a memory leak.
+				// Use a smart pointer?
 				//new boost::thread (boost::bind (boost::mem_fn (&zyre::_exorx_caller), this), event);
-				new boost::thread (boost::bind (&zyre::_exorx_caller, this, event));
+				boost::thread * t = new boost::thread (boost::bind (&zyre::_exorx_call, this, event));
+				
+				// if _exorx_call() has already finished the execution
+				// do not add it to the list
+				//if (!(t -> joinable ()))
+				//{
+				//	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::rx()::thread::joinable()==false" << std::endl;
+					call_async [t -> get_id ()] = t;
+				/*}
+				else
+				{
+					std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::rx()::thread::joinable()==true" << std::endl;
+				}*/
+				//new boost::thread (boost::bind (&zyre::_exorx_call, this, event));
+				//boost::thread (boost::bind (&zyre::_exorx_call, this, event));
 				//new boost::thread (&zyre::_exorx_caller, this, event);
+		}
 		//	}
 		//	else
 		//	{
@@ -983,25 +1010,52 @@ void zyre::rx (void)
 	//while (_running && inited ());
 	//while (_running);
 	
+	// Wait for any still running threads.
+	for (std::pair <boost::thread::id const, boost::thread *> & call_ : call_async)
+	{
+		call_.second -> join ();
+		// the thread itself would have already
+		// deleted the boost::thread object by this time
+		//delete call_.second;
+	}
+	
 	//zpoller_destroy (&poller);
 	//poller = nullptr;
 }
 
-void zyre::_exorx_caller (zyre_event_t * const event)
+void zyre::_exorx_call (zyre_event_t * const event)
 {
 	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::event[" << event << "]" << std::endl;
 	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::rx_is_set()[" << rx_is_set () << "]" << std::endl;
 	
-	if (event != nullptr && rx_is_set ())
+	// test when event = nullptr:
+	//event = nullptr;
+	
+	if (/*event != nullptr && */rx_is_set ())
 	{
-		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::delegating the event to the external handler" << std::endl;
-		_exorx (event);
-		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::delegating the event to the external handler::post-call" << std::endl;
+		/*
+		if (event == nullptr)
+		{
+			_exorx_null (event);
+		}
+		else
+		{
+		*/
+		//if (rx_is_set ())
+		//{
+			std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::delegating the event to the external handler" << std::endl;
+			_exorx (event);
+			std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::delegating the event to the external handler::post-call" << std::endl;
+		//}
+		//}
 		
-		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::delegating the event to the external handler::post-call::destroying event" << std::endl;
-		zyre_event_destroy (&event);
-		std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::delegating the event to the external handler::post-call::destroyed event" << std::endl;
 	}
 	
+	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::destroying event" << std::endl;
+	zyre_event_destroy (&event);
+	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::destroyed event" << std::endl;
+	
+	delete call_async [boost::this_thread::get_id ()];
+	call_async.erase (boost::this_thread::get_id ());
 	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::_exorx_caller()::returning" << std::endl;
 }

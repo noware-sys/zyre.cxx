@@ -15,6 +15,7 @@
 #include <boost/random/uniform_int_distribution.hpp>
 
 #include <string>
+#include <map>
 
 //#include "cluster.hxx"
 //#include "../tree.hxx"
@@ -105,6 +106,9 @@ class zyre
 			>
 			&/* manager*/
 		);
+		
+		bool sync;
+		std::map <boost::thread::id, boost::thread *> call_async;
 	protected:
 		zyre_t * _zyre;
 		//zpoller_t * poller;
@@ -117,7 +121,7 @@ class zyre
 		
 		// External (for the object) event handler.
 		boost::function <void/* manage*/ (zyre_event_t * const/* zyre_event*/)> _exorx;
-		virtual void _exorx_caller (zyre_event_t * const/* zyre_event*/);
+		virtual void _exorx_call (zyre_event_t * const/* zyre_event*/);
 		
 		// Manager of incoming messages.
 		virtual void rx (void);
