@@ -939,8 +939,12 @@ void zyre::rx (void)
 				//new boost::thread (boost::bind (boost::mem_fn (&zyre::_exorx_caller), this), event);
 				boost::thread * t = new boost::thread (boost::bind (&zyre::_exorx_call, this, event));
 				
-				// if _exorx_call() has already finished the execution
-				// do not add it to the list
+				/*
+					if it happens that `_exorx_call()`
+					has already finished the execution
+					in the mean time,
+					do not still add it to the list
+				*/
 				//if (!(t -> joinable ()))
 				//{
 				//	std::cerr << "[" << boost::this_thread::get_id () << "] " << "zyre::rx()::thread::joinable()==false" << std::endl;
